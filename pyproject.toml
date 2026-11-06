@@ -7,7 +7,9 @@ authors = [
     { name = "ren-the-whisperer", email = "l7bftTKDH9oQfPWOe7imnD+cnb.dQCXfqFDBMA@noreply.cnb.cool" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pydantic>=2.14.3",
+]
 
 [build-system]
 requires = ["uv_build>=0.12.15,<0.13.0"]

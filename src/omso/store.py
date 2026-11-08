@@ -7,7 +7,7 @@ import os
 import sqlite3
 from pathlib import Path
 
-from .model import Conversation
+from .model import Conversation, Message
 
 # 默认数据库路径：~/.omso/omso.db
 DEFAULT_DB_PATH = Path.home() / ".omso" / "omso.db"
@@ -72,6 +72,48 @@ def get_conversation(conn: sqlite3.Connection, content_hash: str) -> Conversatio
         (content_hash,),
     ).fetchone()
     return Conversation(**dict(row)) if row else None
+
+
+def save_message(conn: sqlite3.Connection, msg: Message) -> None:
+    """
+    将 Message 模型写入 message 表。
+
+    关键设计：
+    - 使用 model_dump(mode="json") 把 datetime → ISO 字符串、枚举 → 原值，
+      得到的字典可直接作为 sqlite3 命名参数。
+    - 使用 INSERT 而非 INSERT OR IGNORE：UNIQUE(conversation_id, seq) 被触发时
+      抛 IntegrityError，暴露上游 bug。
+    - 调用顺序必须是先 save_conversation 再 save_message，
+      因为 message.conversation_id 是外键引用 conversation(id)。
+      如果顺序反了会报 sqlite3.IntegrityError: FOREIGN KEY constraint failed。
+    """
+    row = msg.model_dump(mode="json")
+    conn.execute(
+        "INSERT INTO message "
+        "(id, conversation_id, seq, role, content, ts) "
+        "VALUES (:id, :conversation_id, :seq, :role, :content, :ts)",
+        row,
+    )
+    conn.commit()
+
+
+def get_messages(conn: sqlite3.Connection, conversation_id: str) -> list[Message]:
+    """
+    按 conversation_id 查询该对话的所有消息，按 seq 升序返回。
+
+    注意：
+    - ORDER BY seq 不是可选项，SQLite 不保证无 ORDER BY 时的返回顺序。
+    - 必须 dict(row) 再 ** 解包：sqlite3.Row 不能直接 ** 解包。
+    - Message(**...) 让 Pydantic 做二次校验：role 不在 Literal 里当场报错，
+      ts 的 ISO 字符串自动解析回 datetime。
+    - 返回 list 而非生成器：连接关了之后再迭代会出问题。
+    - fetchall() 无匹配行时返回 []，列表推导自然得到 []，这是合法答案。
+    """
+    rows = conn.execute(
+        "SELECT * FROM message WHERE conversation_id = ? ORDER BY seq",
+        (conversation_id,),
+    ).fetchall()
+    return [Message(**dict(row)) for row in rows]
 
 
 # 通用 SQL DDL（SQLite 亲和性类型：TEXT / REAL / INTEGER）

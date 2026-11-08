@@ -21,7 +21,7 @@ class Message(BaseModel):
     )
     conversation_id: str
     seq: int = Field(description="在对话中的顺序，从 0 开始，仅用于排序")
-    role: Literal["user", "assistant", "system"] = Field(
+    role: Literal["user", "assistant", "system","unknown"] = Field(
         description="消息角色，限制为这三种，防止拼写错误"
     )
     content: str
